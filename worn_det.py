@@ -7,13 +7,14 @@ from collections import deque
 import threading
 
 class WearableDetector:
-    STATUS_DICT  = {
+    STATUS_DICT = {
         "AMBIENT MOTION (Motion, but Cold)": False,
         "NOT WORN": False,
         "RECENTLY REMOVED (Cooling)": False,
         "WORN (Moving + Warm)": True,
         "POSSIBLY WORN (Warming Up + Motion)": True,
     }
+    
     # Default parameters
     SAMPLE_RATE_HZ = 20         # Hz
     WINDOW_SIZE = 3             # Seconds
@@ -22,21 +23,29 @@ class WearableDetector:
     TEMP_BUFFER_SIZE = 6        # 6 entries → 3 minutes if sampled every 30 sec
     
     def __init__(self):
-        # Setup I2C and MPU6050
-        i2c = busio.I2C(board.SCL, board.SDA)
-        self.mpu = MPU6050(i2c)
-        self.temp_history = deque(maxlen=self.TEMP_BUFFER_SIZE)
+        self._status_lock = threading.Lock()
+        self._temp_lock = threading.Lock()
+        self._mpu_lock = threading.Lock()
         self._running = False
         self._thread = None
-        self._status_lock = threading.Lock()
-        self._current_status = "NOT WORN"  # protected by lock
+        
+        # Protected variables
+        self._current_status = "NOT WORN"
+        self._temp_history = deque(maxlen=self.TEMP_BUFFER_SIZE)
+        
+        try:
+            i2c = busio.I2C(board.SCL, board.SDA)
+            self._mpu = MPU6050(i2c)
+        except Exception as e:
+            print(f"Error initializing MPU6050: {e}")
+            raise
 
     def start(self):
         """Start the wear detection in a separate thread"""
         if not self._running:
             self._running = True
             self._thread = threading.Thread(target=self._run_detection)
-            self._thread.daemon = True  # Thread will stop when main program exits
+            self._thread.daemon = True
             self._thread.start()
 
     def stop(self):
@@ -49,20 +58,34 @@ class WearableDetector:
     def _run_detection(self):
         """Main detection loop running in separate thread"""
         while self._running:
-            self.current_status = self.get_wear_status()
-            print(f"Status: {self.current_status}")
-            time.sleep(30)
+            try:
+                new_status = self.get_wear_status()
+                with self._status_lock:
+                    self._current_status = new_status
+                print(f"Status: {new_status}")
+                time.sleep(30)
+            except Exception as e:
+                print(f"Error in wear detection: {e}")
+                time.sleep(5)  # Wait before retrying
 
     def collect_window(self):
+        """Thread-safe collection of sensor data"""
         num_samples = self.WINDOW_SIZE * self.SAMPLE_RATE_HZ
         accel_data = []
         gyro_data = []
+        
         for _ in range(num_samples):
-            accel = self.mpu.acceleration
-            gyro = self.mpu.gyro
-            accel_data.append(accel)
-            gyro_data.append(gyro)
+            with self._mpu_lock:
+                try:
+                    accel = self._mpu.acceleration
+                    gyro = self._mpu.gyro
+                    accel_data.append(accel)
+                    gyro_data.append(gyro)
+                except Exception as e:
+                    print(f"Error reading sensor: {e}")
+                    continue
             time.sleep(1.0 / self.SAMPLE_RATE_HZ)
+            
         return np.array(accel_data), np.array(gyro_data)
 
     def analyze_motion(self, accel_data, gyro_data):
@@ -76,32 +99,33 @@ class WearableDetector:
         return (accel_std > self.ACC_STD_THRESHOLD) or (gyro_std > self.GYRO_STD_THRESHOLD)
 
     def record_temperature(self, temp_celsius):
-        self.temp_history.append((time.time(), temp_celsius))
+        """Thread-safe temperature recording"""
+        with self._temp_lock:
+            self._temp_history.append((time.time(), temp_celsius))
 
     def get_temp_slope(self):
-        if len(self.temp_history) < 2:
-            return 0.0
+        """Thread-safe temperature slope calculation"""
+        with self._temp_lock:
+            if len(self._temp_history) < 2:
+                return 0.0
 
-        t0, temp0 = self.temp_history[0]
-        t1, temp1 = self.temp_history[-1]
+            t0, temp0 = self._temp_history[0]
+            t1, temp1 = self._temp_history[-1]
 
-        delta_t = (t1 - t0) / 60.0  # convert seconds to minutes
-        delta_temp = temp1 - temp0
+            delta_t = (t1 - t0) / 60.0  # convert to minutes
+            delta_temp = temp1 - temp0
 
-        return 0.0 if delta_t == 0 else delta_temp / delta_t
-    
+            return 0.0 if delta_t == 0 else delta_temp / delta_t
+
     @property
     def current_status(self):
+        """Thread-safe status access"""
         with self._status_lock:
             return self._current_status
 
-    @current_status.setter
-    def current_status(self, value):
-        with self._status_lock:
-            self._current_status = value
-
     @property
     def bool_status(self):
+        """Thread-safe boolean status access"""
         with self._status_lock:
             return self.STATUS_DICT[self._current_status]
 
@@ -110,28 +134,35 @@ class WearableDetector:
         return temp_celsius > 28.0
 
     def get_wear_status(self):
-        accel_data, gyro_data = self.collect_window()
-        temp = self.mpu.temperature
-        self.record_temperature(temp)
+        """Determine wear status based on motion and temperature"""
+        try:
+            accel_data, gyro_data = self.collect_window()
+            with self._mpu_lock:
+                temp = self._mpu.temperature
+            
+            self.record_temperature(temp)
+            temp_slope = self.get_temp_slope()
+            moving = self.analyze_motion(accel_data, gyro_data)
+            warm = self.is_temp_consistent_with_skin(temp)
 
-        temp_slope = self.get_temp_slope()
-        moving = self.analyze_motion(accel_data, gyro_data)
-        warm = self.is_temp_consistent_with_skin(temp)
+            print(f"[DEBUG] Temp: {temp:.2f}°C, ΔT/Δt: {temp_slope:.3f} °C/min")
 
-        print(f"[DEBUG] Temp: {temp:.2f}°C, ΔT/Δt: {temp_slope:.3f} °C/min")
-
-        if moving:
-            if warm:
-                return "WORN (Moving + Warm)"
-            elif temp_slope > 0.1:
-                return "POSSIBLY WORN (Warming Up + Motion)"
+            if moving:
+                if warm:
+                    return "WORN (Moving + Warm)"
+                elif temp_slope > 0.1:
+                    return "POSSIBLY WORN (Warming Up + Motion)"
+                else:
+                    return "AMBIENT MOTION (Motion, but Cold)"
             else:
-                return "AMBIENT MOTION (Motion, but Cold)"
-        else:
-            if temp_slope < -0.1:
-                return "RECENTLY REMOVED (Cooling)"
-            else:
-                return "NOT WORN"
+                if temp_slope < -0.1:
+                    return "RECENTLY REMOVED (Cooling)"
+                else:
+                    return "NOT WORN"
+                    
+        except Exception as e:
+            print(f"Error in wear status determination: {e}")
+            return self.current_status  # Return last known status on error
 
 def main():
     detector = WearableDetector()
