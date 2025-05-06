@@ -84,22 +84,38 @@ class OLEDButtonController(Thread):
         print("OLED Button Controller started...")
         try:
             while self.running:
-                current_time = time.time()
-                
-                # Handle button press
+                # Wait for initial button press
                 if GPIO.input(self.button_pin) == GPIO.LOW:
-                    # Wait for button release (debounce)
+                    # Debounce
                     time.sleep(0.05)
                     while GPIO.input(self.button_pin) == GPIO.LOW and self.running:
                         time.sleep(0.01)
                     
-                    # Change mode and show status
-                    self.mode_index = (self.mode_index + 1) % len(self.modes)
+                    # Show initial status without changing mode
                     self.show_status()
-                    self.mode_changed.set()
-                
-                # Clear display if timeout reached
-                if current_time > self.display_until:
+                    
+                    # Enter active state for 3 seconds
+                    end_time = time.time() + 3
+                    
+                    # Handle subsequent presses within the 3-second window
+                    while time.time() < end_time and self.running:
+                        if GPIO.input(self.button_pin) == GPIO.LOW:
+                            # Debounce
+                            time.sleep(0.05)
+                            while GPIO.input(self.button_pin) == GPIO.LOW and self.running:
+                                time.sleep(0.01)
+                            
+                            # Change mode and show new status
+                            self.mode_index = (self.mode_index + 1) % len(self.modes)
+                            self.show_status()
+                            self.mode_changed.set()
+                            
+                            # Reset the 3-second timer
+                            end_time = time.time() + 3
+                        
+                        time.sleep(0.05)
+                    
+                    # Clear screen after timeout
                     self.clear_screen()
                 
                 time.sleep(0.05)
