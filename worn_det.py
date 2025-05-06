@@ -113,15 +113,32 @@ class WearableDetector:
 def main():
     detector = WearableDetector()
     print("Starting Wear Detection...")
+    print("Commands: 'q' to quit, 's' to start/stop detection")
+    detection_active = False
     
     try:
-        detector.start()
-        # Keep main thread alive
         while True:
-            time.sleep(1)
+            cmd = input().lower()
+            if cmd == 'q':
+                if detection_active:
+                    detector.stop()
+                print("\nExiting...")
+                break
+            elif cmd == 's':
+                if detection_active:
+                    detector.stop()
+                    detection_active = False
+                    print("Detection stopped")
+                else:
+                    detector.start()
+                    detection_active = True
+                    print("Detection started")
+            else:
+                print("Unknown command. Use 'q' to quit or 's' to start/stop")
     except KeyboardInterrupt:
-        print("\nStopping wear detection...")
-        detector.stop()
+        if detection_active:
+            detector.stop()
+        print("\nExiting...")
 
 if __name__ == "__main__":
     main()
