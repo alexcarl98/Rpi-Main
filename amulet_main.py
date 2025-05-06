@@ -16,7 +16,7 @@ from worn_det import WearableDetector
 # - Add a "silence" detection to turn off recording when there is no speech
 
 # Define audio parameters
-DEBUG=True
+DEBUG=False
 FORMAT = pyaudio.paInt16  # 16-bit audio
 CHANNELS = 2  # Mono audio
 RATE = 48000 # Sample rate (44.1 kHz)
@@ -100,16 +100,6 @@ def send_audio(file_path, supabase_url, supabase_api_key, debug=DEBUG):
         os.makedirs(sent_dir, exist_ok=True)
 
     try:
-        # First try to open and check the file
-        if not detect_speech(file_path):
-            print(f"No speech detected, discarding: {file_path}")
-            try:
-                os.remove(file_path)
-            except FileNotFoundError:
-                print(f"File already removed: {file_path}")
-            return
-
-        # If we get here, we detected speech, so immediately open the file
         with open(file_path, "rb") as audio_file:
             files = {"file": (os.path.basename(file_path), audio_file, "audio/wav")}
             headers = {
@@ -125,10 +115,8 @@ def send_audio(file_path, supabase_url, supabase_api_key, debug=DEBUG):
                 print(f"Sending {file_path} to {supabase_url}")
                 response = requests.post(supabase_url, files=files, headers=headers)
                 print(f"Sent {file_path}: {response.status_code} - {response.text}")
-    except FileNotFoundError:
-        print(f"File not found: {file_path}")
     except Exception as e:
-        print(f"Error processing {file_path}: {e}")
+        print(f"Error sending {file_path}: {e}")
 
 def monitor_and_send():
     env_vars = load_env_file('.env')
@@ -139,13 +127,24 @@ def monitor_and_send():
         files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.endswith('.wav')])
         for filename in files:
             file_path = os.path.join(OUTPUT_DIR, filename)
-            if not is_connected():
-                if DEBUG:
-                    print("Not connected to the internet, skipping upload")
-                continue
-            send_audio(file_path, SUPABASE_FUNCTION_URL, SUPABASE_API_KEY)
-            if not DEBUG:
-                os.remove(file_path)
+            try:
+                # Check for speech before attempting to send
+                if not detect_speech(file_path):
+                    print(f"No speech detected, discarding: {file_path}")
+                    os.remove(file_path)
+                    continue
+
+                if not is_connected():
+                    if DEBUG:
+                        print("Not connected to the internet, skipping upload")
+                    continue
+
+                send_audio(file_path, SUPABASE_FUNCTION_URL, SUPABASE_API_KEY)
+                
+            except FileNotFoundError:
+                print(f"File not found: {file_path}")
+            except Exception as e:
+                print(f"Error processing {file_path}: {e}")
         time.sleep(10)
 
 def main():
