@@ -99,26 +99,36 @@ def send_audio(file_path, supabase_url, supabase_api_key, debug=DEBUG):
     if not os.path.exists(sent_dir):
         os.makedirs(sent_dir, exist_ok=True)
 
-    if not detect_speech(file_path):
-        print(f"No speech detected, discarding: {file_path}")
-        os.remove(file_path)
-        return
+    try:
+        # First try to open and check the file
+        if not detect_speech(file_path):
+            print(f"No speech detected, discarding: {file_path}")
+            try:
+                os.remove(file_path)
+            except FileNotFoundError:
+                print(f"File already removed: {file_path}")
+            return
 
-    with open(file_path, "rb") as audio_file:
-        files = {"file": (os.path.basename(file_path), audio_file, "audio/wav")}
-        headers = {
-            "Authorization": f"Bearer {supabase_api_key}"
-        }
-        if debug:
-            print(f"Debug mode: Moving {file_path} to {sent_dir}")
-            print(headers)
-            dest_path = os.path.join(sent_dir, os.path.basename(file_path))
-            shutil.move(file_path, dest_path)
-            print(f"File successfully moved to: {dest_path}")
-        else:
-            print(f"Sending {file_path} to {supabase_url}")
-            response = requests.post(supabase_url, files=files, headers=headers)
-            print(f"Sent {file_path}: {response.status_code} - {response.text}")
+        # If we get here, we detected speech, so immediately open the file
+        with open(file_path, "rb") as audio_file:
+            files = {"file": (os.path.basename(file_path), audio_file, "audio/wav")}
+            headers = {
+                "Authorization": f"Bearer {supabase_api_key}"
+            }
+            if debug:
+                print(f"Debug mode: Moving {file_path} to {sent_dir}")
+                print(headers)
+                dest_path = os.path.join(sent_dir, os.path.basename(file_path))
+                shutil.move(file_path, dest_path)
+                print(f"File successfully moved to: {dest_path}")
+            else:
+                print(f"Sending {file_path} to {supabase_url}")
+                response = requests.post(supabase_url, files=files, headers=headers)
+                print(f"Sent {file_path}: {response.status_code} - {response.text}")
+    except FileNotFoundError:
+        print(f"File not found: {file_path}")
+    except Exception as e:
+        print(f"Error processing {file_path}: {e}")
 
 def monitor_and_send():
     env_vars = load_env_file('.env')
