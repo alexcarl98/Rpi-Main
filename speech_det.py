@@ -65,7 +65,7 @@ def detect_speech(filename, energy_threshold=0.0003, delta_threshold=0.00006):
 
     print(f"Speech frames ratio: {speech_ratio:.2f}")
 
-    return speech_ratio > 0.03  # 20% frames must show speech-like activity
+    return speech_ratio > 0.06  # 20% frames must show speech-like activity
 
 if __name__ == "__main__":
     import sys
