@@ -125,18 +125,17 @@ def monitor_and_send():
     SUPABASE_API_KEY = env_vars['SUPABASE_API_KEY']
 
     while True:
-        for filename in os.listdir(OUTPUT_DIR):
-            if filename.endswith(".wav"):
-                file_path = os.path.join(OUTPUT_DIR, filename)
-                if not is_connected():
-                    if DEBUG:
-                        print("Not connected to the internet, skipping upload")
-                    continue
-                send_audio(file_path, SUPABASE_FUNCTION_URL, SUPABASE_API_KEY)
-                if not DEBUG:
-                    os.remove(file_path)  # Remove the file after sending
-                    # if debugging, file is automatically moved to sent folder
-        time.sleep(10)  # Check every 10 seconds
+        files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.endswith('.wav')])
+        for filename in files:
+            file_path = os.path.join(OUTPUT_DIR, filename)
+            if not is_connected():
+                if DEBUG:
+                    print("Not connected to the internet, skipping upload")
+                continue
+            send_audio(file_path, SUPABASE_FUNCTION_URL, SUPABASE_API_KEY)
+            if not DEBUG:
+                os.remove(file_path)
+        time.sleep(10)
 
 def main():
     # Initialize PortAudio
