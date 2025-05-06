@@ -4,6 +4,7 @@ import busio
 import numpy as np
 from adafruit_mpu6050 import MPU6050
 from collections import deque
+import threading
 
 class WearableDetector:
     # Default parameters
@@ -18,6 +19,31 @@ class WearableDetector:
         i2c = busio.I2C(board.SCL, board.SDA)
         self.mpu = MPU6050(i2c)
         self.temp_history = deque(maxlen=self.TEMP_BUFFER_SIZE)
+        self._running = False
+        self._thread = None
+        self.current_status = "NOT WORN"
+
+    def start(self):
+        """Start the wear detection in a separate thread"""
+        if not self._running:
+            self._running = True
+            self._thread = threading.Thread(target=self._run_detection)
+            self._thread.daemon = True  # Thread will stop when main program exits
+            self._thread.start()
+
+    def stop(self):
+        """Stop the wear detection thread"""
+        self._running = False
+        if self._thread:
+            self._thread.join()
+            self._thread = None
+
+    def _run_detection(self):
+        """Main detection loop running in separate thread"""
+        while self._running:
+            self.current_status = self.get_wear_status()
+            print(f"Status: {self.current_status}")
+            time.sleep(30)
 
     def collect_window(self):
         num_samples = self.WINDOW_SIZE * self.SAMPLE_RATE_HZ
@@ -88,10 +114,14 @@ def main():
     detector = WearableDetector()
     print("Starting Wear Detection...")
     
-    while True:
-        status = detector.get_wear_status()
-        print(f"Status: {status}")
-        time.sleep(30)
+    try:
+        detector.start()
+        # Keep main thread alive
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nStopping wear detection...")
+        detector.stop()
 
 if __name__ == "__main__":
     main()
