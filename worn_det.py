@@ -131,7 +131,7 @@ class WearableDetector:
 
     @staticmethod
     def is_temp_consistent_with_skin(temp_celsius):
-        return temp_celsius > 28.0
+        return temp_celsius > 27.5
 
     def get_wear_status(self):
         """Determine wear status based on motion and temperature"""
