@@ -7,6 +7,13 @@ from collections import deque
 import threading
 
 class WearableDetector:
+    STATUS_DICT  = {
+        "AMBIENT MOTION (Motion, but Cold)": False,
+        "NOT WORN": False,
+        "RECENTLY REMOVED (Cooling)": False,
+        "WORN (Moving + Warm)": True,
+        "POSSIBLY WORN (Warming Up + Motion)": True,
+    }
     # Default parameters
     SAMPLE_RATE_HZ = 20         # Hz
     WINDOW_SIZE = 3             # Seconds
@@ -21,7 +28,8 @@ class WearableDetector:
         self.temp_history = deque(maxlen=self.TEMP_BUFFER_SIZE)
         self._running = False
         self._thread = None
-        self.current_status = "NOT WORN"
+        self._status_lock = threading.Lock()
+        self._current_status = "NOT WORN"  # protected by lock
 
     def start(self):
         """Start the wear detection in a separate thread"""
@@ -81,6 +89,21 @@ class WearableDetector:
         delta_temp = temp1 - temp0
 
         return 0.0 if delta_t == 0 else delta_temp / delta_t
+    
+    @property
+    def current_status(self):
+        with self._status_lock:
+            return self._current_status
+
+    @current_status.setter
+    def current_status(self, value):
+        with self._status_lock:
+            self._current_status = value
+
+    @property
+    def bool_status(self):
+        with self._status_lock:
+            return self.STATUS_DICT[self._current_status]
 
     @staticmethod
     def is_temp_consistent_with_skin(temp_celsius):
