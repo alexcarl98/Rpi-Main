@@ -144,6 +144,7 @@ def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     detector = WearableDetector()
+    detector.start()
     detection_active = False
 
     # Start OLED button controller thread
@@ -180,22 +181,22 @@ def main():
                     # the device is in the ON mode, 
                     shared_state.should_record = True
                     # for now, I'll keep the detection going throughout modes 0 and 1
-                    if not detection_active:
-                        detection_active = True
-                        detector.start()
+                    # if not detection_active:
+                    #     detection_active = True
+                    #     detector.start()
                 elif mode_idx==1:
                     # the device is in the AUTO mode, 
                     is_being_worn = detector.bool_status
                     shared_state.should_record = is_being_worn
-                    if not detection_active:
-                        detection_active = True
-                        detector.start()
+                    # if not detection_active:
+                    #     detection_active = True
+                    #     detector.start()
                 elif mode_idx==2:
                     # the device is in the OFF mode, 
                     shared_state.should_record = False
-                    if detection_active:
-                        detection_active = False
-                        detector.stop()
+                    # if detection_active:
+                    #     detection_active = False
+                    #     detector.stop()
 
             if not shared_state.should_record:
                 print("sleeping, not recording data")
@@ -225,6 +226,7 @@ def main():
         # Stop the OLED controller thread
         oled_controller.stop()
         oled_controller.join()  # Wait for the thread to finish
-
+        detector.stop()
+        detector.join()
 if __name__ == "__main__":
     main()
