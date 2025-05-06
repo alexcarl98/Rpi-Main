@@ -18,7 +18,7 @@ from speech_det import detect_speech
 DEBUG=True
 FORMAT = pyaudio.paInt16  # 16-bit audio
 CHANNELS = 2  # Mono audio
-RATE = 44100  # Sample rate (44.1 kHz)
+RATE = 48000 # Sample rate (44.1 kHz)
 CHUNK = 1024  # Number of frames per buffer
 RECORD_SECONDS = 40  # Duration of each recording segment
 OUTPUT_DIR = "data"
