@@ -166,6 +166,8 @@ def main():
     
     recording_thread.start()
     monitoring_thread.start()
+    possible_modes= ['ON', 'AUTO', 'OFF']
+    mode_idx = 0
 
     try:
         while True:
@@ -197,6 +199,7 @@ def main():
 
             if not shared_state.should_record:
                 print("sleeping, not recording data")
+                print(f"Mode: {possible_modes[mode_idx]}")
                 time.sleep(5)
                 continue
 
