@@ -111,12 +111,20 @@ def send_audio(file_path, supabase_url, supabase_api_key, debug=DEBUG):
                 dest_path = os.path.join(sent_dir, os.path.basename(file_path))
                 shutil.move(file_path, dest_path)
                 print(f"File successfully moved to: {dest_path}")
+                return True
             else:
                 print(f"Sending {file_path} to {supabase_url}")
                 response = requests.post(supabase_url, files=files, headers=headers)
                 print(f"Sent {file_path}: {response.status_code} - {response.text}")
+                return True
+                # For now, if there's a buggy file, 
+                # I'd rather not get stuck on it.
+                # if response.status_code == 200:
+                #     return True
+                # return False
     except Exception as e:
         print(f"Error sending {file_path}: {e}")
+        return False
 
 def monitor_and_send():
     env_vars = load_env_file('.env')
@@ -139,7 +147,14 @@ def monitor_and_send():
                         print("Not connected to the internet, skipping upload")
                     continue
 
-                send_audio(file_path, SUPABASE_FUNCTION_URL, SUPABASE_API_KEY)
+                if send_audio(file_path, SUPABASE_FUNCTION_URL, SUPABASE_API_KEY):
+                    try:
+                        os.remove(file_path)
+                        print(f"Successfully removed sent file: {file_path}")
+                    except FileNotFoundError:
+                        print(f"File already removed: {file_path}")
+                    except Exception as e:
+                        print(f"Error removing file: {e}")
                 
             except FileNotFoundError:
                 print(f"File not found: {file_path}")
